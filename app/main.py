@@ -261,3 +261,24 @@ def list_all_jobs():
     jobs = job_manager.list_jobs()
     return {"jobs": [j.to_dict() for j in jobs]}
 
+
+@app.get("/api/jobs/unfinished")
+def get_unfinished_job():
+    """Detect any unfinished job that can be resumed after server restart."""
+    jobs = job_manager.list_jobs()
+    for j in jobs:
+        if j.status in ("running", "paused", "queued") or (
+            j.total_chunks > 0 and j.completed_chunks < j.total_chunks and j.status != "completed"
+        ):
+            return {"has_unfinished": True, "job": j.to_dict()}
+    return {"has_unfinished": False, "job": None}
+
+
+@app.post("/api/system/model")
+def set_active_model(name: str):
+    """Switch active local model for analyses (e.g. qwen3.5:2b, qwen3.5:0.8b)."""
+    import app.config
+    app.config.MODEL_NAME = name
+    return {"status": "ok", "active_model": app.config.MODEL_NAME}
+
+

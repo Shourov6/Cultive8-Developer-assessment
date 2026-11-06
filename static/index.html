@@ -210,11 +210,25 @@
         <p>Offline multi-chunk server log correlation via local Qwen3.5 2B</p>
       </div>
       <div class="status-badges">
-        <span class="badge badge-model" id="model-badge">Model: qwen3.5:2b (num_ctx=2048)</span>
+        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Model:</label>
+        <select id="model-select" onchange="switchModel(this.value)" style="background: #1e293b; color: #c7d2fe; border: 1px solid #4338ca; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">
+          <option value="qwen3.5:2b">qwen3.5:2b (Active)</option>
+        </select>
         <span class="badge badge-ram" id="ram-badge">RAM: ... MB / 4096 MB</span>
         <span class="badge badge-offline">100% Offline</span>
       </div>
     </header>
+
+    <!-- Resume Banner (Auto-detected unfinished job) -->
+    <div id="resume-banner" style="display: none; background: #1e1b4b; border: 1px solid #4f46e5; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <strong style="color: #a5b4fc;">Detected unfinished analysis job:</strong>
+        <span id="unfinished-job-text" style="color: #e0e7ff; margin-left: 6px;"></span>
+      </div>
+      <button class="btn btn-secondary" onclick="resumeDetectedJob()" style="padding: 6px 12px; font-size: 0.85rem;">
+        Resume Job
+      </button>
+    </div>
 
     <div class="grid">
       <!-- Section 1: Upload and Controls -->
