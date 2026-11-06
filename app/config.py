@@ -49,7 +49,7 @@ OPTIMIZE_SKIP_BENIGN_CHUNKS = os.getenv("OPTIMIZE_SKIP_BENIGN_CHUNKS", "true").l
 # ---------------------------------------------------------------------------
 # Reliability
 # ---------------------------------------------------------------------------
-OLLAMA_TIMEOUT_SECONDS = 180   # per-call timeout
+OLLAMA_TIMEOUT_SECONDS = 300   # per-call timeout (5m allows cold model loads + 2 vCPU CPU inference)
 OLLAMA_MAX_RETRIES = 3         # retries per chunk (with exponential backoff)
 OLLAMA_RETRY_BACKOFF_BASE = 2  # seconds; retry waits base^attempt
 

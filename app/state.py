@@ -230,7 +230,8 @@ class EntityRecord:
         Generate a concise one-line summary for the carried context.
         Designed to fit within strict token limits.
         """
-        parts = [f"IP {self.entity_id}:"]
+        prefix = "" if (self.entity_id.startswith("user:") or self.entity_id.startswith("sess:")) else "IP "
+        parts = [f"{prefix}{self.entity_id}:"]
 
         if self.failed_logins > 0:
             parts.append(
@@ -264,6 +265,9 @@ class EntityRecord:
             parts.append(f"users={','.join(self.associated_users)}")
         if self.associated_sessions:
             parts.append(f"sessions={','.join(self.associated_sessions)}")
+
+        if len(parts) == 1:
+            return ""
 
         return " | ".join(parts)
 
@@ -450,6 +454,8 @@ class StateTable:
                 continue
 
             summary = rec.to_summary_line()
+            if not summary:
+                continue
             summary_len = len(summary) + 1  # +1 for newline
 
             if chars_used + summary_len > max_chars:
