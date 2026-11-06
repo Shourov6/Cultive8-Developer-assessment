@@ -5,6 +5,7 @@ env/
 __pycache__/
 *.pyc
 *.pyo
+.env
 
 # Pytest & Testing
 .pytest_cache/
@@ -12,10 +13,12 @@ __pycache__/
 htmlcov/
 
 # Job data & temporary uploads
-data/jobs/
+data/*
+!data/.gitkeep
 *.log.tmp
+*.tmp
 
-# Large binary installer (already in workspace)
+# Large binary installer
 OllamaSetup.exe
 
 # IDE / OS files
@@ -23,4 +26,3 @@ OllamaSetup.exe
 .idea/
 .DS_Store
 Thumbs.db
-

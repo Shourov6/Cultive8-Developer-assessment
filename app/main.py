@@ -7,6 +7,7 @@ Serves the single-page dashboard at GET /.
 """
 
 import os
+import json
 import tempfile
 import logging
 from typing import Optional
