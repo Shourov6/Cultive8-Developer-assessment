@@ -227,9 +227,14 @@
         <strong style="color: #a5b4fc;">Detected unfinished analysis job:</strong>
         <span id="unfinished-job-text" style="color: #e0e7ff; margin-left: 6px;"></span>
       </div>
-      <button class="btn btn-secondary" onclick="resumeDetectedJob()" style="padding: 6px 12px; font-size: 0.85rem;">
-        Resume Job
-      </button>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-secondary" onclick="resumeDetectedJob()" style="padding: 6px 12px; font-size: 0.85rem;">
+          ▶ Resume Job
+        </button>
+        <button class="btn btn-secondary" onclick="dismissUnfinishedJob()" style="background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 6px 12px; font-size: 0.85rem; cursor: pointer;">
+          ✕ Dismiss (Start Fresh)
+        </button>
+      </div>
     </div>
 
     <div class="grid">
@@ -435,6 +440,11 @@
       document.getElementById('resume-banner').style.display = 'none';
       document.getElementById('progress-card').style.display = 'block';
       resumeAnalysis();
+    }
+
+    function dismissUnfinishedJob() {
+      document.getElementById('resume-banner').style.display = 'none';
+      activeJobId = null;
     }
 
     let stagedJobId = null;
