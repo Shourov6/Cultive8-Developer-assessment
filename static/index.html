@@ -345,6 +345,7 @@
     let activeJobId = null;
     let pollTimer = null;
     let selectedFile = null;
+    const seenChunks = new Set();
 
     // Fetch initial system telemetry
     async function updateSystemTelemetry() {
@@ -360,6 +361,63 @@
     }
     setInterval(updateSystemTelemetry, 3000);
     updateSystemTelemetry();
+
+    // Load installed Ollama models
+    async function loadModels() {
+      try {
+        const res = await fetch('/api/system/models');
+        if (res.ok) {
+          const data = await res.json();
+          const select = document.getElementById('model-select');
+          if (select && data.models && data.models.length) {
+            select.innerHTML = '';
+            data.models.forEach(m => {
+              const opt = document.createElement('option');
+              opt.value = m;
+              opt.innerText = m + (m === data.active_model ? ' (Active)' : '');
+              if (m === data.active_model) opt.selected = true;
+              select.appendChild(opt);
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error loading models', e);
+      }
+    }
+    loadModels();
+
+    async function switchModel(modelName) {
+      try {
+        await fetch(`/api/system/model?name=${encodeURIComponent(modelName)}`, { method: 'POST' });
+      } catch (e) {
+        console.error('Error switching model', e);
+      }
+    }
+
+    // Auto-detect unfinished jobs
+    async function checkUnfinishedJob() {
+      try {
+        const res = await fetch('/api/jobs/unfinished');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.has_unfinished && data.job) {
+            activeJobId = data.job.job_id;
+            const banner = document.getElementById('resume-banner');
+            document.getElementById('unfinished-job-text').innerText = `${data.job.job_id} (${data.job.log_filename}) - ${data.job.completed_chunks}/${data.job.total_chunks} chunks completed`;
+            banner.style.display = 'flex';
+          }
+        }
+      } catch (e) {
+        console.error('Error checking unfinished jobs', e);
+      }
+    }
+    checkUnfinishedJob();
+
+    function resumeDetectedJob() {
+      document.getElementById('resume-banner').style.display = 'none';
+      document.getElementById('progress-card').style.display = 'block';
+      resumeAnalysis();
+    }
 
     // Drag and Drop
     const dropzone = document.getElementById('dropzone');
@@ -423,6 +481,8 @@
         }
 
         // Show progress section
+        seenChunks.clear();
+        document.getElementById('live-feed').innerText = 'Starting chunk processing...';
         document.getElementById('progress-card').style.display = 'block';
         document.getElementById('report-card').style.display = 'none';
         btn.innerText = 'Analyzing in Background...';
@@ -465,8 +525,17 @@
 
         if (data.latest_chunk) {
           const lc = data.latest_chunk;
-          const logMsg = `[Chunk ${lc.chunk_index}] Lines L${lc.start_line}-L${lc.end_line} | Status: ${lc.status} | Prompt: ${lc.prompt_tokens} tok | Generated: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s)\nFindings detected: ${lc.findings ? lc.findings.length : 0}`;
-          document.getElementById('live-feed').innerText = logMsg;
+          if (!seenChunks.has(lc.chunk_index)) {
+            seenChunks.add(lc.chunk_index);
+            const feed = document.getElementById('live-feed');
+            if (feed.innerText.includes('Waiting for execution stream...')) {
+              feed.innerText = '';
+            }
+            const skippedText = lc.skipped_benign ? " [Fast-path: Benign Pre-Scan]" : "";
+            const line = `[Chunk ${lc.chunk_index}] L${lc.start_line}-L${lc.end_line} | Status: ${lc.status}${skippedText} | Prompt: ${lc.prompt_tokens} tok | Gen: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s) | Findings: ${lc.findings ? lc.findings.length : 0}\n`;
+            feed.innerText += line;
+            feed.scrollTop = feed.scrollHeight;
+          }
         }
 
         if (data.status === 'completed') {
