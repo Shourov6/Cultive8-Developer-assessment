@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local AI Security Log Analyzer</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --purple: #8b5cf6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .title-area h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
+    .title-area p { font-size: 0.9rem; color: var(--text-muted); }
+    .status-badges { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-model { background: #312e81; color: #c7d2fe; border: 1px solid #4338ca; }
+    .badge-ram { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; }
+    .badge-offline { background: #374151; color: #d1d5db; border: 1px solid #4b5563; }
+    
+    .grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    @media(min-width: 900px) { .grid-cols-2 { grid-template-columns: 1fr 1fr; } }
+    
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);
+    }
+    .card h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    
+    /* Upload Zone */
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background-color 0.2s;
+      background: rgba(15, 23, 42, 0.4);
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--primary);
+      background: rgba(59, 130, 246, 0.05);
+    }
+    .dropzone svg { width: 44px; height: 44px; fill: var(--text-muted); margin-bottom: 8px; }
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:hover:not(:disabled) { background: var(--primary-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: #334155; }
+    .btn-secondary:hover:not(:disabled) { background: #475569; }
+    .btn-success { background: var(--success); }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+    
+    .btn-group { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+    
+    /* Progress and telemetry */
+    .progress-bar-container {
+      width: 100%;
+      height: 12px;
+      background: #0f172a;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 16px 0;
+      border: 1px solid var(--border);
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .stat-box {
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
+    .stat-val { font-size: 1.25rem; font-weight: 700; color: #fff; margin-top: 4px; }
+    
+    /* Severity Badges */
+    .sev-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .sev-critical { background: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; }
+    .sev-high { background: #7c2d12; color: #fed7aa; border: 1px solid #f97316; }
+    .sev-medium { background: #713f12; color: #fef08a; border: 1px solid #eab308; }
+    .sev-low { background: #1e3a8a; color: #bfdbfe; border: 1px solid #3b82f6; }
+    
+    /* Report Section */
+    .summary-card {
+      background: #0f172a;
+      border-left: 4px solid var(--primary);
+      padding: 16px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .summary-card.Critical { border-color: var(--danger); }
+    .summary-card.High { border-color: var(--warning); }
+    .summary-card.Medium { border-color: #eab308; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #0f172a;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    tr:hover { background: rgba(255, 255, 255, 0.02); }
+    .evidence-pill {
+      display: inline-block;
+      background: #334155;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      margin: 2px;
+    }
+    .log-feed {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      max-height: 180px;
+      overflow-y: auto;
+      color: #94a3b8;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title-area">
+        <h1>Local AI Security Log Analyzer</h1>
+        <p>Offline multi-chunk server log correlation via local Qwen3.5 2B</p>
+      </div>
+      <div class="status-badges">
+        <span class="badge badge-model" id="model-badge">Model: qwen3.5:2b (num_ctx=2048)</span>
+        <span class="badge badge-ram" id="ram-badge">RAM: ... MB / 4096 MB</span>
+        <span class="badge badge-offline">100% Offline</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Section 1: Upload and Controls -->
+      <div class="card">
+        <h2>
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
+          1. Upload Server Log File
+        </h2>
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+          <p style="font-weight: 600; margin-bottom: 4px;">Drag & Drop or Click to Select Log File</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">Accepted formats: .log, .txt (Max 10 MB)</p>
+          <input type="file" id="file-input" style="display: none" accept=".log,.txt" onchange="handleFileSelect(event)">
+        </div>
+
+        <div id="file-details" style="display: none; margin-top: 14px; font-size: 0.9rem;">
+          Selected file: <strong id="selected-filename">sample.log</strong> (<span id="selected-filesize">0 KB</span>)
+        </div>
+
+        <div class="btn-group">
+          <button class="btn" id="start-btn" onclick="startAnalysis()" disabled>
+            Start Security Analysis
+          </button>
+          <button class="btn btn-secondary" id="resume-btn" onclick="resumeAnalysis()" style="display: none;">
+            Resume Analysis
+          </button>
+        </div>
+      </div>
+
+      <!-- Section 2: Real-time Analysis Progress -->
+      <div class="card" id="progress-card" style="display: none;">
+        <h2>
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
+          2. Live Multi-Chunk Analysis Pipeline
+        </h2>
+
+        <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600;">
+          <span id="progress-status-text">Processing chunks...</span>
+          <span id="progress-percent">0%</span>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="progress-bar"></div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">Progress</div>
+            <div class="stat-val" id="stat-chunks">0 / 0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Prompt Tokens</div>
+            <div class="stat-val" id="stat-prompt-tok">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Output Tokens</div>
+            <div class="stat-val" id="stat-output-tok">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Elapsed Time</div>
+            <div class="stat-val" id="stat-duration">0s</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Live Telemetry Stream:</div>
+          <div class="log-feed" id="live-feed">Waiting for execution stream...</div>
+        </div>
+      </div>
+
+      <!-- Section 3: Final Consolidated Report -->
+      <div class="card" id="report-card" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+          <h2>
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            3. Final Consolidated Security Report
+          </h2>
+          <button class="btn btn-secondary" onclick="downloadReportJSON()">
+            Download Report (JSON)
+          </button>
+        </div>
+
+        <div class="summary-card" id="summary-container">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-weight: 700; font-size: 0.85rem; text-transform: uppercase;">Overall Risk Assessment:</span>
+            <span class="sev-badge" id="risk-badge">LOW</span>
+          </div>
+          <p id="executive-summary-text" style="color: #e2e8f0; font-size: 0.95rem;"></p>
+        </div>
+
+        <h3 style="font-size: 1rem; margin-top: 20px; color: #cbd5e1;">Detected Security Incidents</h3>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Attack Type</th>
+                <th>Entity (IP / Account)</th>
+                <th>Reason & Action</th>
+                <th>Evidence Lines</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="findings-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeJobId = null;
+    let pollTimer = null;
+    let selectedFile = null;
+
+    // Fetch initial system telemetry
+    async function updateSystemTelemetry() {
+      try {
+        const res = await fetch('/api/system/ram');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('ram-badge').innerText = `RAM: ${data.combined_mb} MB / 4096 MB`;
+        }
+      } catch (e) {
+        console.error("Telemetry error", e);
+      }
+    }
+    setInterval(updateSystemTelemetry, 3000);
+    updateSystemTelemetry();
+
+    // Drag and Drop
+    const dropzone = document.getElementById('dropzone');
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); });
+    });
+    dropzone.addEventListener('drop', (e) => {
+      if (e.dataTransfer.files.length) {
+        setFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function handleFileSelect(e) {
+      if (e.target.files.length) {
+        setFile(e.target.files[0]);
+      }
+    }
+
+    function setFile(file) {
+      selectedFile = file;
+      document.getElementById('selected-filename').innerText = file.name;
+      document.getElementById('selected-filesize').innerText = (file.size / 1024).toFixed(1) + ' KB';
+      document.getElementById('file-details').style.display = 'block';
+      document.getElementById('start-btn').disabled = false;
+    }
+
+    async function startAnalysis() {
+      if (!selectedFile) return;
+
+      const btn = document.getElementById('start-btn');
+      btn.disabled = true;
+      btn.innerText = 'Uploading...';
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      try {
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json();
+          alert('Upload failed: ' + (err.detail || 'Server error'));
+          btn.disabled = false;
+          btn.innerText = 'Start Security Analysis';
+          return;
+        }
+
+        const uploadData = await uploadRes.json();
+        activeJobId = uploadData.job_id;
+
+        // Start job
+        const startRes = await fetch(`/api/jobs/${activeJobId}/start`, { method: 'POST' });
+        if (!startRes.ok) {
+          const err = await startRes.json();
+          alert('Job start failed: ' + (err.detail || 'Server error'));
+          btn.disabled = false;
+          btn.innerText = 'Start Security Analysis';
+          return;
+        }
+
+        // Show progress section
+        document.getElementById('progress-card').style.display = 'block';
+        document.getElementById('report-card').style.display = 'none';
+        btn.innerText = 'Analyzing in Background...';
+
+        startPolling();
+      } catch (e) {
+        alert('Network error starting analysis: ' + e);
+        btn.disabled = false;
+        btn.innerText = 'Start Security Analysis';
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollJobStatus, 1500);
+      pollJobStatus();
+    }
+
+    async function pollJobStatus() {
+      if (!activeJobId) return;
+
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/status`);
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // Update progress bar
+        document.getElementById('progress-bar').style.width = data.progress_percent + '%';
+        document.getElementById('progress-percent').innerText = data.progress_percent + '%';
+        document.getElementById('progress-status-text').innerText = `Status: ${data.status.toUpperCase()}`;
+        document.getElementById('stat-chunks').innerText = `${data.completed_chunks} / ${data.total_chunks}`;
+        document.getElementById('stat-prompt-tok').innerText = data.total_prompt_tokens;
+        document.getElementById('stat-output-tok').innerText = data.total_output_tokens;
+        document.getElementById('stat-duration').innerText = `${data.total_duration_seconds}s`;
+
+        if (data.ram) {
+          document.getElementById('ram-badge').innerText = `RAM: ${data.ram.combined_mb} MB / 4096 MB`;
+        }
+
+        if (data.latest_chunk) {
+          const lc = data.latest_chunk;
+          const logMsg = `[Chunk ${lc.chunk_index}] Lines L${lc.start_line}-L${lc.end_line} | Status: ${lc.status} | Prompt: ${lc.prompt_tokens} tok | Generated: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s)\nFindings detected: ${lc.findings ? lc.findings.length : 0}`;
+          document.getElementById('live-feed').innerText = logMsg;
+        }
+
+        if (data.status === 'completed') {
+          clearInterval(pollTimer);
+          document.getElementById('start-btn').disabled = false;
+          document.getElementById('start-btn').innerText = 'Analysis Complete';
+          fetchAndRenderReport();
+        } else if (data.status === 'failed') {
+          clearInterval(pollTimer);
+          document.getElementById('start-btn').disabled = false;
+          document.getElementById('start-btn').innerText = 'Start Security Analysis';
+          alert('Analysis job failed: ' + (data.error_message || 'Unknown error'));
+        } else if (data.status === 'paused') {
+          document.getElementById('resume-btn').style.display = 'inline-flex';
+        }
+      } catch (e) {
+        console.error('Polling error', e);
+      }
+    }
+
+    async function resumeAnalysis() {
+      if (!activeJobId) return;
+      const res = await fetch(`/api/jobs/${activeJobId}/resume`, { method: 'POST' });
+      if (res.ok) {
+        document.getElementById('resume-btn').style.display = 'none';
+        startPolling();
+      }
+    }
+
+    let currentReport = null;
+
+    async function fetchAndRenderReport() {
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/report`);
+        if (!res.ok) return;
+
+        currentReport = await res.json();
+        const card = document.getElementById('report-card');
+        card.style.display = 'block';
+
+        // Summary details
+        const summaryBox = document.getElementById('summary-container');
+        summaryBox.className = 'summary-card ' + (currentReport.overall_risk || 'Low');
+        const badge = document.getElementById('risk-badge');
+        badge.innerText = currentReport.overall_risk || 'LOW';
+        badge.className = 'sev-badge sev-' + (currentReport.overall_risk || 'low').toLowerCase();
+
+        document.getElementById('executive-summary-text').innerText = currentReport.executive_summary;
+
+        // Findings table
+        const tbody = document.getElementById('findings-table-body');
+        tbody.innerHTML = '';
+
+        if (!currentReport.findings || currentReport.findings.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No suspicious attack patterns detected. Log appears normal.</td></tr>';
+          return;
+        }
+
+        currentReport.findings.forEach(f => {
+          const tr = document.createElement('tr');
+          const sevClass = 'sev-' + (f.severity || 'low').toLowerCase();
+
+          // Evidence snippets
+          let evHtml = '';
+          if (f.evidence && f.evidence.length) {
+            evHtml = f.evidence.map(e => `<span class="evidence-pill" title="${e.snippet || ''}">L${e.line}</span>`).join(' ');
+          } else if (f.start_line) {
+            evHtml = `<span class="evidence-pill">L${f.start_line}-L${f.end_line}</span>`;
+          }
+
+          tr.innerHTML = `
+            <td><span class="sev-badge ${sevClass}">${f.severity}</span></td>
+            <td><strong>${f.attack_type.replace(/_/g, ' ')}</strong></td>
+            <td><code>${f.entity}</code></td>
+            <td>
+              <div style="font-weight: 500;">${f.reason || ''}</div>
+              <div style="font-size: 0.8rem; color: #38bdf8; margin-top: 4px;">Action: ${f.suggested_action || 'Review and monitor.'}</div>
+            </td>
+            <td>${evHtml}</td>
+            <td><span style="font-size: 0.8rem; text-transform: capitalize; color: ${f.confidence === 'confirmed' ? '#4ade80' : '#cbd5e1'}">${f.confidence || 'suspected'}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Smooth scroll to report
+        card.scrollIntoView({ behavior: 'smooth' });
+      } catch (e) {
+        console.error('Error rendering report', e);
+      }
+    }
+
+    function downloadReportJSON() {
+      if (!currentReport) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentReport, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `security-report-${activeJobId}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+  </script>
+</body>
+</html>
+

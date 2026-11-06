@@ -1,0 +1,25 @@
+# Dependencies & Virtual Environments
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Pytest & Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Job data & temporary uploads
+data/jobs/
+*.log.tmp
+
+# Large binary installer (already in workspace)
+OllamaSetup.exe
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
