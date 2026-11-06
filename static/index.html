@@ -506,6 +506,15 @@
 
       try {
         const res = await fetch(`/api/jobs/${activeJobId}/status`);
+        if (res.status === 404) {
+          // Clean up stale job session
+          clearInterval(pollTimer);
+          activeJobId = null;
+          document.getElementById('progress-card').style.display = 'none';
+          document.getElementById('start-btn').disabled = false;
+          document.getElementById('start-btn').innerText = 'Start Security Analysis';
+          return;
+        }
         if (!res.ok) return;
 
         const data = await res.json();
