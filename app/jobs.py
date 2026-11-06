@@ -55,6 +55,7 @@ class JobMetadata:
     total_output_tokens: int = 0
     total_duration_seconds: float = 0.0
     error_message: Optional[str] = None
+    current_activity: Optional[str] = "Queued for analysis..."
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -176,9 +177,13 @@ class JobManager:
                 state = StateTable()
 
             # Split input log
+            meta.current_activity = "Splitting log file into token-budgeted chunks..."
+            self.save_metadata(meta)
+
             estimator = TokenEstimator()
             chunks, estimator, _ = split_log_file(log_path, estimator)
             meta.total_chunks = len(chunks)
+            meta.current_activity = f"Log split into {len(chunks)} chunks. Starting sequential inference..."
             self.save_metadata(meta)
 
             client = OllamaClient()
@@ -187,6 +192,7 @@ class JobManager:
                 if self._stop_event.is_set():
                     logger.info("Job %s paused by stop event", job_id)
                     meta.status = "paused"
+                    meta.current_activity = "Analysis paused by user."
                     self.save_metadata(meta)
                     return
 
@@ -194,6 +200,9 @@ class JobManager:
                 # If chunk already processed (e.g. on resume), skip!
                 if os.path.exists(chunk_file):
                     continue
+
+                meta.current_activity = f"Evaluating Chunk {chunk_idx + 1} of {len(chunks)} (Lines L{chunk.start_line}-L{chunk.end_line}) in local {meta.model_name}..."
+                self.save_metadata(meta)
 
                 # Process this chunk with retry and context fallback
                 chunk_result = self._process_chunk_with_retry(
@@ -224,6 +233,9 @@ class JobManager:
                 self.save_metadata(meta)
 
             # Once all chunks are processed, generate final consolidated report
+            meta.current_activity = "All chunks processed. Correlating entities and building final report..."
+            self.save_metadata(meta)
+
             from app.correlate import build_final_report
             report = build_final_report(job_id, job_dir, state, client)
             report_path = os.path.join(job_dir, "report.json")
@@ -231,6 +243,7 @@ class JobManager:
                 json.dump(report, f, indent=2)
 
             meta.status = "completed"
+            meta.current_activity = "Analysis completed successfully."
             meta.completed_at = time.time()
             self.save_metadata(meta)
             logger.info("Job %s completed successfully", job_id)

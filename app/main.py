@@ -233,6 +233,7 @@ def get_job_status(job_id: str):
         "total_output_tokens": meta.total_output_tokens,
         "total_duration_seconds": round(meta.total_duration_seconds, 1),
         "error_message": meta.error_message,
+        "current_activity": meta.current_activity or "Processing...",
         "ram": get_ram_usage(),
         "latest_chunk": latest_chunk,
     }

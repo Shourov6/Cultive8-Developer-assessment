@@ -482,7 +482,7 @@
 
         // Show progress section
         seenChunks.clear();
-        document.getElementById('live-feed').innerText = 'Starting chunk processing...';
+        document.getElementById('live-feed').innerText = '>>> [1/2] Log file uploaded to server.\n>>> [2/2] Initiating local AI worker...\n>>> Evaluating Chunk 1 in Qwen3.5 2B (2 vCPU inference in progress, please wait ~15s)...';
         document.getElementById('progress-card').style.display = 'block';
         document.getElementById('report-card').style.display = 'none';
         btn.innerText = 'Analyzing in Background...';
@@ -513,7 +513,7 @@
         // Update progress bar
         document.getElementById('progress-bar').style.width = data.progress_percent + '%';
         document.getElementById('progress-percent').innerText = data.progress_percent + '%';
-        document.getElementById('progress-status-text').innerText = `Status: ${data.status.toUpperCase()}`;
+        document.getElementById('progress-status-text').innerText = `Status: ${data.status.toUpperCase()} ${data.current_activity ? '— ' + data.current_activity : ''}`;
         document.getElementById('stat-chunks').innerText = `${data.completed_chunks} / ${data.total_chunks}`;
         document.getElementById('stat-prompt-tok').innerText = data.total_prompt_tokens;
         document.getElementById('stat-output-tok').innerText = data.total_output_tokens;
@@ -523,16 +523,22 @@
           document.getElementById('ram-badge').innerText = `RAM: ${data.ram.combined_mb} MB / 4096 MB`;
         }
 
+        const feed = document.getElementById('live-feed');
+        if (data.status === 'running' && seenChunks.size === 0 && data.current_activity) {
+          if (feed.innerText.includes('Waiting for execution stream')) {
+            feed.innerText = `>>> ${data.current_activity}\n>>> (Local model running on CPU, evaluating tokens...)`;
+          }
+        }
+
         if (data.latest_chunk) {
           const lc = data.latest_chunk;
           if (!seenChunks.has(lc.chunk_index)) {
             seenChunks.add(lc.chunk_index);
-            const feed = document.getElementById('live-feed');
-            if (feed.innerText.includes('Waiting for execution stream...')) {
+            if (feed.innerText.includes('Waiting for execution stream') || feed.innerText.includes('Evaluating Chunk 1')) {
               feed.innerText = '';
             }
             const skippedText = lc.skipped_benign ? " [Fast-path: Benign Pre-Scan]" : "";
-            const line = `[Chunk ${lc.chunk_index}] L${lc.start_line}-L${lc.end_line} | Status: ${lc.status}${skippedText} | Prompt: ${lc.prompt_tokens} tok | Gen: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s) | Findings: ${lc.findings ? lc.findings.length : 0}\n`;
+            const line = `✓ [Chunk ${lc.chunk_index + 1}/${data.total_chunks}] Lines L${lc.start_line}-L${lc.end_line} | Status: ${lc.status}${skippedText} | Prompt: ${lc.prompt_tokens} tok | Gen: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s) | Findings: ${lc.findings ? lc.findings.length : 0}\n`;
             feed.innerText += line;
             feed.scrollTop = feed.scrollHeight;
           }
