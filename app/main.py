@@ -160,6 +160,26 @@ async def upload_log_file(file: UploadFile = File(...)):
     }
 
 
+@app.post("/api/sample-log/load")
+def load_sample_log():
+    """Directly stage the workspace sample log file for instant analysis."""
+    sample_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "Cultive8_Workspace_Agrigen_Server.log",
+    )
+    if not os.path.exists(sample_path):
+        raise HTTPException(status_code=404, detail="Sample log file not found in workspace.")
+
+    job_id = job_manager.create_job(sample_path, "Cultive8_Workspace_Agrigen_Server.log")
+    size_bytes = os.path.getsize(sample_path)
+    return {
+        "job_id": job_id,
+        "filename": "Cultive8_Workspace_Agrigen_Server.log",
+        "size_bytes": size_bytes,
+        "status": "queued",
+    }
+
+
 @app.post("/api/jobs/{job_id}/start")
 def start_analysis_job(job_id: str):
     """Start analyzing an uploaded log file."""

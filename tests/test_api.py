@@ -107,4 +107,13 @@ class TestApiEndpoints:
         assert status_res.status_code == 200
         assert status_res.json()["status"] == "cancelled"
 
+    def test_load_sample_log_endpoint(self):
+        res = client.post("/api/sample-log/load")
+        assert res.status_code == 200
+        data = res.json()
+        assert "job_id" in data
+        assert data["filename"] == "Cultive8_Workspace_Agrigen_Server.log"
+        assert data["status"] == "queued"
+
+
 

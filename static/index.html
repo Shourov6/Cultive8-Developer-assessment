@@ -239,15 +239,20 @@
           <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
           1. Upload Server Log File
         </h2>
-        <div class="dropzone" id="dropzone">
+        <label for="file-input" class="dropzone" id="dropzone" style="cursor: pointer; display: block;">
           <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
-          <p style="font-weight: 600; margin-bottom: 4px;">Drag & Drop Log File Here</p>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Accepted formats: .log, .txt (Max 10 MB)</p>
-          <button type="button" class="btn btn-secondary" id="browse-btn" style="padding: 6px 16px; font-size: 0.85rem;">
-            📁 Browse Log File
-          </button>
-        </div>
-        <input type="file" id="file-input" style="display: none" accept=".log,.txt">
+          <p style="font-weight: 600; margin-bottom: 4px;">Drag & Drop Log File Here or Click to Browse</p>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;">Accepted formats: .log, .txt (Max 10 MB)</p>
+          <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <span class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.85rem; pointer-events: none;">
+              📁 Browse Computer
+            </span>
+            <button type="button" class="btn btn-secondary" id="sample-btn" onclick="event.preventDefault(); event.stopPropagation(); loadSampleLog();" style="background: #1e1b4b; border: 1px solid #6366f1; color: #c7d2fe; padding: 6px 16px; font-size: 0.85rem; cursor: pointer;">
+              ⚡ Load Sample Log
+            </button>
+          </div>
+        </label>
+        <input type="file" id="file-input" accept=".log,.txt,text/plain,*/*" style="position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;">
 
         <div id="file-details" style="display: none; margin-top: 14px; font-size: 0.9rem;">
           Selected file: <strong id="selected-filename">sample.log</strong> (<span id="selected-filesize">0 KB</span>)
@@ -432,29 +437,25 @@
       resumeAnalysis();
     }
 
+    let stagedJobId = null;
+
     // Prevent browser from navigating to dropped file anywhere on page
-    window.addEventListener('dragover', (e) => e.preventDefault(), false);
-    window.addEventListener('drop', (e) => e.preventDefault(), false);
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+      window.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }, false);
+    });
 
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
-    const browseBtn = document.getElementById('browse-btn');
-
-    // Click on dropzone or browse button opens file dialog
-    dropzone.addEventListener('click', (e) => {
-      fileInput.click();
-    });
-    browseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      fileInput.click();
-    });
 
     ['dragenter', 'dragover'].forEach(name => {
       dropzone.addEventListener(name, (e) => {
         e.preventDefault();
         e.stopPropagation();
         dropzone.classList.add('dragover');
-      });
+      }, false);
     });
 
     ['dragleave', 'dragend'].forEach(name => {
@@ -462,7 +463,7 @@
         e.preventDefault();
         e.stopPropagation();
         dropzone.classList.remove('dragover');
-      });
+      }, false);
     });
 
     dropzone.addEventListener('drop', (e) => {
@@ -473,16 +474,18 @@
       if (files && files.length > 0) {
         setFile(files[0]);
       }
-    });
+    }, false);
 
     fileInput.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
         setFile(e.target.files[0]);
       }
+      fileInput.value = '';
     });
 
     function setFile(file) {
       if (!file) return;
+      stagedJobId = null;
 
       const name = file.name.toLowerCase();
       if (!name.endsWith('.log') && !name.endsWith('.txt')) {
@@ -506,30 +509,75 @@
       dropzone.style.background = '#064e3b15';
     }
 
+    async function loadSampleLog() {
+      try {
+        const btn = document.getElementById('sample-btn');
+        if (btn) btn.innerText = 'Loading...';
+        const res = await fetch('/api/sample-log/load', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json();
+          alert('Could not stage sample log: ' + (err.detail || 'Server error'));
+          if (btn) btn.innerText = '⚡ Load Sample Log';
+          return;
+        }
+        const data = await res.json();
+        stagedJobId = data.job_id;
+        selectedFile = null;
+
+        document.getElementById('selected-filename').innerText = data.filename;
+        document.getElementById('selected-filesize').innerText = (data.size_bytes / 1024).toFixed(1) + ' KB';
+        document.getElementById('file-details').style.display = 'block';
+
+        const startBtn = document.getElementById('start-btn');
+        startBtn.disabled = false;
+        startBtn.innerText = `Start Security Analysis (${data.filename})`;
+        dropzone.style.borderColor = '#10b981';
+        dropzone.style.background = '#064e3b15';
+        if (btn) btn.innerText = '✓ Sample Loaded';
+      } catch (e) {
+        alert('Network error loading sample log: ' + e);
+        const btn = document.getElementById('sample-btn');
+        if (btn) btn.innerText = '⚡ Load Sample Log';
+      }
+    }
+
     async function startAnalysis() {
-      if (!selectedFile) return;
+      if (!selectedFile && !stagedJobId) return;
 
       const btn = document.getElementById('start-btn');
       btn.disabled = true;
       btn.innerText = 'Uploading...';
 
-      const formData = new FormData();
-      formData.append('file', selectedFile);
+      let jobId = stagedJobId;
 
-      try {
-        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json();
-          alert('Upload failed: ' + (err.detail || 'Server error'));
+      if (!jobId) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+          const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+          if (!uploadRes.ok) {
+            const err = await uploadRes.json();
+            alert('Upload failed: ' + (err.detail || 'Server error'));
+            btn.disabled = false;
+            btn.innerText = 'Start Security Analysis';
+            return;
+          }
+
+          const uploadData = await uploadRes.json();
+          jobId = uploadData.job_id;
+        } catch (e) {
+          alert('Upload network error: ' + e);
           btn.disabled = false;
           btn.innerText = 'Start Security Analysis';
           return;
         }
+      }
 
-        const uploadData = await uploadRes.json();
-        activeJobId = uploadData.job_id;
+      activeJobId = jobId;
 
-        // Start job
+      // Start job
+      try {
         const startRes = await fetch(`/api/jobs/${activeJobId}/start`, { method: 'POST' });
         if (!startRes.ok) {
           const err = await startRes.json();
@@ -541,7 +589,7 @@
 
         // Show progress section
         seenChunks.clear();
-        document.getElementById('live-feed').innerText = '>>> [1/2] Log file uploaded to server.\n>>> [2/2] Initiating local AI worker...\n>>> Evaluating Chunk 1 in Qwen3.5 2B (2 vCPU inference in progress, please wait ~15s)...';
+        document.getElementById('live-feed').innerText = '>>> [1/2] Log file ready on server.\n>>> [2/2] Initiating local AI worker...\n>>> Evaluating Chunk 1 in Qwen3.5 2B (2 vCPU inference in progress, please wait ~15s)...';
         document.getElementById('progress-card').style.display = 'block';
         document.getElementById('report-card').style.display = 'none';
         btn.innerText = 'Analyzing in Background...';
