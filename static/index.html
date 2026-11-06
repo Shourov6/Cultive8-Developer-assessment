@@ -533,24 +533,19 @@
         }
 
         const feed = document.getElementById('live-feed');
-        if (data.status === 'running' && seenChunks.size === 0 && data.current_activity) {
-          if (feed.innerText.includes('Waiting for execution stream')) {
-            feed.innerText = `>>> ${data.current_activity}\n>>> (Local model running on CPU, evaluating tokens...)`;
+        if (data.chunks_summary && data.chunks_summary.length > 0) {
+          let text = '';
+          data.chunks_summary.forEach(c => {
+            const skippedText = c.skipped_benign ? " [Fast-path: Benign Pre-Scan]" : "";
+            text += `✓ [Chunk ${c.chunk_index + 1}/${data.total_chunks}] Lines L${c.start_line}-L${c.end_line} | Status: ${c.status}${skippedText} | Prompt: ${c.prompt_tokens} tok | Gen: ${c.output_tokens} tok (${c.duration_seconds.toFixed(1)}s) | Findings: ${c.findings_count}\n`;
+          });
+          if (data.status === 'running' && data.current_activity) {
+            text += `\n>>> In Progress: ${data.current_activity}\n`;
           }
-        }
-
-        if (data.latest_chunk) {
-          const lc = data.latest_chunk;
-          if (!seenChunks.has(lc.chunk_index)) {
-            seenChunks.add(lc.chunk_index);
-            if (feed.innerText.includes('Waiting for execution stream') || feed.innerText.includes('Evaluating Chunk 1')) {
-              feed.innerText = '';
-            }
-            const skippedText = lc.skipped_benign ? " [Fast-path: Benign Pre-Scan]" : "";
-            const line = `✓ [Chunk ${lc.chunk_index + 1}/${data.total_chunks}] Lines L${lc.start_line}-L${lc.end_line} | Status: ${lc.status}${skippedText} | Prompt: ${lc.prompt_tokens} tok | Gen: ${lc.output_tokens} tok (${lc.duration_seconds.toFixed(1)}s) | Findings: ${lc.findings ? lc.findings.length : 0}\n`;
-            feed.innerText += line;
-            feed.scrollTop = feed.scrollHeight;
-          }
+          feed.innerText = text;
+          feed.scrollTop = feed.scrollHeight;
+        } else if (data.status === 'running' && data.current_activity) {
+          feed.innerText = `>>> ${data.current_activity}\n>>> Local Qwen3.5 2B is evaluating tokens in background (num_ctx=2048)...`;
         }
 
         if (data.status === 'completed') {

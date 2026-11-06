@@ -205,19 +205,27 @@ def get_job_status(job_id: str):
     if meta.total_chunks > 0:
         percent = int((meta.completed_chunks / meta.total_chunks) * 100)
 
-    # Read latest processed chunk details if any
-    latest_chunk = None
+    # Read all processed chunks for streaming telemetry
+    chunks_summary = []
     chunks_dir = job_manager.get_chunks_dir(job_id)
     if os.path.exists(chunks_dir):
         chunk_files = [f for f in os.listdir(chunks_dir) if f.endswith(".json")]
-        if chunk_files:
-            latest_file = sorted(
-                chunk_files,
-                key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else -1
-            )[-1]
+        chunk_files.sort(key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else -1)
+        for cf in chunk_files:
             try:
-                with open(os.path.join(chunks_dir, latest_file), "r", encoding="utf-8") as f:
-                    latest_chunk = json.load(f)
+                with open(os.path.join(chunks_dir, cf), "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    chunks_summary.append({
+                        "chunk_index": cdata.get("chunk_index", 0),
+                        "start_line": cdata.get("start_line", 0),
+                        "end_line": cdata.get("end_line", 0),
+                        "status": cdata.get("status", "success"),
+                        "prompt_tokens": cdata.get("prompt_tokens", 0),
+                        "output_tokens": cdata.get("output_tokens", 0),
+                        "duration_seconds": cdata.get("duration_seconds", 0.0),
+                        "findings_count": len(cdata.get("findings", [])),
+                        "skipped_benign": cdata.get("skipped_benign", False),
+                    })
             except Exception:
                 pass
 
@@ -235,7 +243,8 @@ def get_job_status(job_id: str):
         "error_message": meta.error_message,
         "current_activity": meta.current_activity or "Processing...",
         "ram": get_ram_usage(),
-        "latest_chunk": latest_chunk,
+        "chunks_summary": chunks_summary,
+        "latest_chunk": chunks_summary[-1] if chunks_summary else None,
     }
 
 
