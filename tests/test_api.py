@@ -91,3 +91,20 @@ class TestApiEndpoints:
         rep_res = client.get(f"/api/jobs/{job_id}/report")
         assert rep_res.status_code == 404
 
+    def test_cancel_job_endpoint(self):
+        valid_content = b'{"time":"2026-11-01T08:00:00Z","level":"INFO","message":"test"}\n'
+        upload_res = client.post(
+            "/api/upload",
+            files={"file": ("test.log", io.BytesIO(valid_content), "text/plain")},
+        )
+        job_id = upload_res.json()["job_id"]
+
+        cancel_res = client.post(f"/api/jobs/{job_id}/cancel")
+        assert cancel_res.status_code == 200
+        assert cancel_res.json()["status"] == "cancelled"
+
+        status_res = client.get(f"/api/jobs/{job_id}/status")
+        assert status_res.status_code == 200
+        assert status_res.json()["status"] == "cancelled"
+
+

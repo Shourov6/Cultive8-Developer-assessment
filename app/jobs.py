@@ -134,6 +134,22 @@ class JobManager:
         jobs.sort(key=lambda j: j.created_at, reverse=True)
         return jobs
 
+    def cancel_job(self, job_id: str) -> bool:
+        """
+        Signals the worker to stop processing the specified job.
+        Marks metadata as 'cancelled' and frees the worker.
+        """
+        with self.lock:
+            meta = self.load_metadata(job_id)
+            if not meta:
+                return False
+
+            self._stop_event.set()
+            meta.status = "cancelled"
+            meta.current_activity = "Analysis cancelled by user."
+            self.save_metadata(meta)
+            return True
+
     def start_job(self, job_id: str) -> bool:
         """
         Trigger execution of a job in the background worker thread.
@@ -190,9 +206,11 @@ class JobManager:
 
             for chunk_idx, chunk in enumerate(chunks):
                 if self._stop_event.is_set():
-                    logger.info("Job %s paused by stop event", job_id)
-                    meta.status = "paused"
-                    meta.current_activity = "Analysis paused by user."
+                    logger.info("Job %s stopped by stop event", job_id)
+                    meta = self.load_metadata(job_id) or meta
+                    if meta.status != "cancelled":
+                        meta.status = "cancelled"
+                    meta.current_activity = "Analysis cancelled by user."
                     self.save_metadata(meta)
                     return
 
@@ -211,6 +229,15 @@ class JobManager:
                     chunk=chunk,
                     estimator=estimator,
                 )
+
+                if self._stop_event.is_set():
+                    logger.info("Job %s stopped after chunk %d", job_id, chunk_idx)
+                    meta = self.load_metadata(job_id) or meta
+                    if meta.status != "cancelled":
+                        meta.status = "cancelled"
+                    meta.current_activity = "Analysis cancelled by user."
+                    self.save_metadata(meta)
+                    return
 
                 # Persist chunk result
                 with open(chunk_file, "w", encoding="utf-8") as f:
@@ -266,6 +293,17 @@ class JobManager:
         """
         Process a single chunk with automatic retry, parsing, and context safety.
         """
+        if self._stop_event.is_set():
+            return {
+                "chunk_index": chunk.chunk_index,
+                "start_line": chunk.start_line,
+                "end_line": chunk.end_line,
+                "status": "cancelled",
+                "findings": [],
+                "prompt_tokens": 0,
+                "output_tokens": 0,
+                "duration_seconds": 0.0,
+            }
         # Optimization extra: fast-path provably benign chunks (routine 200/304 traffic)
         if OPTIMIZE_SKIP_BENIGN_CHUNKS and is_chunk_provably_benign(chunk):
             logger.info("Chunk %d is provably benign (pre-scan passed). Skipping model call.", chunk.chunk_index)

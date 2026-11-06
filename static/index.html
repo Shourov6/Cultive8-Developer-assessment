@@ -99,6 +99,8 @@
     .btn-secondary:hover:not(:disabled) { background: #475569; }
     .btn-success { background: var(--success); }
     .btn-success:hover:not(:disabled) { background: #059669; }
+    .btn-danger { background: #b91c1c; }
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
     
     .btn-group { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
     
@@ -255,15 +257,23 @@
           <button class="btn btn-secondary" id="resume-btn" onclick="resumeAnalysis()" style="display: none;">
             Resume Analysis
           </button>
+          <button class="btn btn-danger" id="cancel-btn" onclick="cancelAnalysis()" style="display: none;">
+            Cancel Analysis
+          </button>
         </div>
       </div>
 
       <!-- Section 2: Real-time Analysis Progress -->
       <div class="card" id="progress-card" style="display: none;">
-        <h2>
-          <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
-          2. Live Multi-Chunk Analysis Pipeline
-        </h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <h2 style="margin-bottom: 0;">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
+            2. Live Multi-Chunk Analysis Pipeline
+          </h2>
+          <button class="btn btn-danger" id="cancel-btn-top" onclick="cancelAnalysis()" style="padding: 6px 14px; font-size: 0.85rem; display: none;">
+            ✕ Cancel Analysis
+          </button>
+        </div>
 
         <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600;">
           <span id="progress-status-text">Processing chunks...</span>
@@ -486,6 +496,15 @@
         document.getElementById('progress-card').style.display = 'block';
         document.getElementById('report-card').style.display = 'none';
         btn.innerText = 'Analyzing in Background...';
+        
+        // Show cancel buttons
+        document.getElementById('cancel-btn').style.display = 'inline-flex';
+        document.getElementById('cancel-btn').disabled = false;
+        document.getElementById('cancel-btn').innerText = 'Cancel Analysis';
+        document.getElementById('cancel-btn-top').style.display = 'inline-flex';
+        document.getElementById('cancel-btn-top').disabled = false;
+        document.getElementById('cancel-btn-top').innerText = '✕ Cancel Analysis';
+        document.getElementById('resume-btn').style.display = 'none';
 
         startPolling();
       } catch (e) {
@@ -513,6 +532,8 @@
           document.getElementById('progress-card').style.display = 'none';
           document.getElementById('start-btn').disabled = false;
           document.getElementById('start-btn').innerText = 'Start Security Analysis';
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.getElementById('cancel-btn-top').style.display = 'none';
           return;
         }
         if (!res.ok) return;
@@ -552,17 +573,60 @@
           clearInterval(pollTimer);
           document.getElementById('start-btn').disabled = false;
           document.getElementById('start-btn').innerText = 'Analysis Complete';
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.getElementById('cancel-btn-top').style.display = 'none';
+          document.getElementById('resume-btn').style.display = 'none';
           fetchAndRenderReport();
         } else if (data.status === 'failed') {
           clearInterval(pollTimer);
           document.getElementById('start-btn').disabled = false;
           document.getElementById('start-btn').innerText = 'Start Security Analysis';
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.getElementById('cancel-btn-top').style.display = 'none';
           alert('Analysis job failed: ' + (data.error_message || 'Unknown error'));
+        } else if (data.status === 'cancelled') {
+          clearInterval(pollTimer);
+          document.getElementById('start-btn').disabled = false;
+          document.getElementById('start-btn').innerText = 'Start Security Analysis';
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.getElementById('cancel-btn-top').style.display = 'none';
+          document.getElementById('resume-btn').style.display = 'inline-flex';
+          document.getElementById('progress-status-text').innerText = 'Status: CANCELLED — Analysis stopped by user.';
+          feed.innerText += '\n>>> [CANCELLED] Analysis cancelled by user. Click "Resume Analysis" to continue processing.\n';
+          feed.scrollTop = feed.scrollHeight;
         } else if (data.status === 'paused') {
+          document.getElementById('cancel-btn').style.display = 'none';
+          document.getElementById('cancel-btn-top').style.display = 'none';
           document.getElementById('resume-btn').style.display = 'inline-flex';
         }
       } catch (e) {
         console.error('Polling error', e);
+      }
+    }
+
+    async function cancelAnalysis() {
+      if (!activeJobId) return;
+      if (!confirm('Are you sure you want to cancel the analysis?')) return;
+      
+      const btn = document.getElementById('cancel-btn');
+      const btnTop = document.getElementById('cancel-btn-top');
+      btn.disabled = true;
+      btnTop.disabled = true;
+      btn.innerText = 'Cancelling...';
+      btnTop.innerText = 'Cancelling...';
+
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/cancel`, { method: 'POST' });
+        if (res.ok) {
+          document.getElementById('progress-status-text').innerText = 'Status: CANCELLING...';
+        }
+      } catch (e) {
+        console.error('Error cancelling job', e);
+        alert('Failed to request cancellation: ' + e);
+        btn.disabled = false;
+        btnTop.disabled = false;
+        btn.innerText = 'Cancel Analysis';
+        btnTop.innerText = '✕ Cancel Analysis';
       }
     }
 
@@ -571,8 +635,15 @@
       const res = await fetch(`/api/jobs/${activeJobId}/resume`, { method: 'POST' });
       if (res.ok) {
         document.getElementById('resume-btn').style.display = 'none';
+        document.getElementById('cancel-btn').style.display = 'inline-flex';
+        document.getElementById('cancel-btn').disabled = false;
+        document.getElementById('cancel-btn').innerText = 'Cancel Analysis';
+        document.getElementById('cancel-btn-top').style.display = 'inline-flex';
+        document.getElementById('cancel-btn-top').disabled = false;
+        document.getElementById('cancel-btn-top').innerText = '✕ Cancel Analysis';
         startPolling();
       }
+    }
     }
 
     let currentReport = null;

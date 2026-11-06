@@ -195,6 +195,22 @@ def resume_analysis_job(job_id: str):
     return {"message": "Job resumed.", "job_id": job_id, "status": "running"}
 
 
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_analysis_job(job_id: str):
+    """Cancel / stop an ongoing or queued analysis job."""
+    meta = job_manager.load_metadata(job_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    job_manager.cancel_job(job_id)
+    updated = job_manager.load_metadata(job_id)
+    return {
+        "message": "Job cancelled.",
+        "job_id": job_id,
+        "status": updated.status if updated else "cancelled",
+    }
+
+
 @app.get("/api/jobs/{job_id}/status")
 def get_job_status(job_id: str):
     """Poll job progress, chunk stats, and live system metrics."""
@@ -278,8 +294,8 @@ def get_unfinished_job():
     """Detect any unfinished job that can be resumed after server restart."""
     jobs = job_manager.list_jobs()
     for j in jobs:
-        if j.status in ("running", "paused", "queued") or (
-            j.total_chunks > 0 and j.completed_chunks < j.total_chunks and j.status != "completed"
+        if j.status in ("running", "paused") or (
+            j.total_chunks > 0 and j.completed_chunks < j.total_chunks and j.status not in ("completed", "cancelled")
         ):
             return {"has_unfinished": True, "job": j.to_dict()}
     return {"has_unfinished": False, "job": None}
