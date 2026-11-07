@@ -59,9 +59,8 @@ def main():
     assert "prompt_injection_attempt" in types
     assert "sql_injection" in types
     assert "rate_limit_burst" in types
-    print("\n✓ All attack types detected and correlated dynamically!")
+    print("\nAll attack types detected and correlated dynamically.")
 
 
 if __name__ == "__main__":
     main()
-

@@ -190,6 +190,23 @@ def start_analysis_job(job_id: str):
     if meta.status == "running":
         return {"message": "Job is already running.", "status": "running"}
 
+    client = OllamaClient(model=meta.model_name)
+    try:
+        available_models = client.list_models()
+    except OllamaError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Local model service unavailable: {e}",
+        )
+    if meta.model_name not in available_models:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Model '{meta.model_name}' is not installed in Ollama. "
+                f"Available models: {', '.join(available_models) or 'none'}."
+            ),
+        )
+
     success = job_manager.start_job(job_id)
     if not success:
         raise HTTPException(
@@ -327,5 +344,4 @@ def set_active_model(name: str):
     import app.config
     app.config.MODEL_NAME = name
     return {"status": "ok", "active_model": app.config.MODEL_NAME}
-
 

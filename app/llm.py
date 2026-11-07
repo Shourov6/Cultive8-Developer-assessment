@@ -15,6 +15,7 @@ Key design decisions:
 import time
 import json
 import logging
+import threading
 import httpx
 
 from app.config import (
@@ -51,10 +52,12 @@ class OllamaClient:
         base_url: str = OLLAMA_BASE_URL,
         model: str = MODEL_NAME,
         timeout: int = OLLAMA_TIMEOUT_SECONDS,
+        cancel_event: threading.Event | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.cancel_event = cancel_event
         self.generate_url = f"{self.base_url}/api/generate"
         self.tags_url = f"{self.base_url}/api/tags"
 
@@ -124,6 +127,8 @@ class OllamaClient:
 
         last_error = None
         for attempt in range(1, retries + 1):
+            if self.cancel_event and self.cancel_event.is_set():
+                raise OllamaError("Ollama call cancelled.")
             try:
                 logger.info(
                     "Ollama call attempt %d/%d  model=%s  num_ctx=%d  num_predict=%d",
@@ -178,6 +183,8 @@ class OllamaClient:
 
             # Exponential backoff before retry
             if attempt < retries:
+                if self.cancel_event and self.cancel_event.is_set():
+                    raise OllamaError("Ollama call cancelled.")
                 wait = OLLAMA_RETRY_BACKOFF_BASE ** attempt
                 logger.info("Retrying in %ds...", wait)
                 time.sleep(wait)
@@ -214,4 +221,3 @@ class OllamaResult:
             f"output_tokens={self.output_tokens}, "
             f"elapsed={self.elapsed_seconds:.1f}s)"
         )
-

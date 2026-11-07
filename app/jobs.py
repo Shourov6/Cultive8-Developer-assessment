@@ -78,6 +78,17 @@ class JobManager:
         self._worker_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._active_job_id: Optional[str] = None
+        self._recover_interrupted_jobs()
+
+    def _recover_interrupted_jobs(self):
+        """Mark jobs interrupted by a server restart as resumable."""
+        for meta in self.list_jobs():
+            if meta.status != "running":
+                continue
+            meta.status = "paused"
+            meta.current_activity = "Analysis interrupted by server restart. Ready to resume."
+            self.save_metadata(meta)
+            logger.info("Recovered interrupted job %s as paused", meta.job_id)
 
     def get_job_dir(self, job_id: str) -> str:
         return os.path.join(self.jobs_dir, job_id)
@@ -202,7 +213,7 @@ class JobManager:
             meta.current_activity = f"Log split into {len(chunks)} chunks. Starting sequential inference..."
             self.save_metadata(meta)
 
-            client = OllamaClient()
+            client = OllamaClient(cancel_event=self._stop_event)
 
             for chunk_idx, chunk in enumerate(chunks):
                 if self._stop_event.is_set():
@@ -258,6 +269,16 @@ class JobManager:
                 meta.total_output_tokens += chunk_result.get("output_tokens", 0)
                 meta.total_duration_seconds += chunk_result.get("duration_seconds", 0.0)
                 self.save_metadata(meta)
+
+                if chunk_result.get("status") == "failed":
+                    meta.status = "failed"
+                    meta.error_message = (
+                        f"Chunk {chunk_idx} failed: "
+                        f"{chunk_result.get('error', 'unknown error')}"
+                    )
+                    meta.current_activity = "Analysis failed while processing a chunk."
+                    self.save_metadata(meta)
+                    return
 
             # Once all chunks are processed, generate final consolidated report
             meta.current_activity = "All chunks processed. Correlating entities and building final report..."
@@ -334,6 +355,15 @@ class JobManager:
         )
 
         try:
+            estimated_prompt_tokens = estimator.estimate_tokens(
+                SYSTEM_PROMPT_CHUNK + user_prompt
+            )
+            if estimated_prompt_tokens + BUDGET_MODEL_REPLY > MODEL_CONTEXT_WINDOW:
+                return self._process_split_chunk(
+                    client, state, chunk, estimator,
+                    f"estimated prompt size {estimated_prompt_tokens + BUDGET_MODEL_REPLY}",
+                )
+
             start_t = time.time()
             result = client.generate(
                 system_prompt=SYSTEM_PROMPT_CHUNK,
@@ -341,6 +371,12 @@ class JobManager:
                 num_predict=BUDGET_MODEL_REPLY,
             )
             elapsed = time.time() - start_t
+
+            if result.prompt_tokens + result.output_tokens > MODEL_CONTEXT_WINDOW:
+                return self._process_split_chunk(
+                    client, state, chunk, estimator,
+                    f"measured prompt and response size {result.prompt_tokens + result.output_tokens}",
+                )
 
             # Calibrate estimator with real prompt tokens
             estimator.calibrate(len(SYSTEM_PROMPT_CHUNK) + len(user_prompt), result.prompt_tokens)
@@ -374,3 +410,62 @@ class JobManager:
                 "duration_seconds": 0.0,
             }
 
+    def _process_split_chunk(
+        self,
+        client: OllamaClient,
+        state: StateTable,
+        chunk: LogChunk,
+        estimator: TokenEstimator,
+        reason: str,
+    ) -> dict:
+        """Split an oversized chunk on entry boundaries and aggregate its results."""
+        if len(chunk.lines) < 2:
+            raise OllamaError(
+                f"Chunk L{chunk.start_line}-L{chunk.end_line} cannot be split "
+                f"without cutting a log entry ({reason})."
+            )
+
+        midpoint = len(chunk.lines) // 2
+        subchunks = []
+        for offset, lines in enumerate(
+            (chunk.lines[:midpoint], chunk.lines[midpoint:])
+        ):
+            subchunk = LogChunk(
+                chunk_index=chunk.chunk_index * 2 + offset,
+                lines=lines,
+            ).finalize()
+            subchunks.append(subchunk)
+
+        logger.warning(
+            "Splitting oversized chunk %d (%s) into %d entries and %d entries",
+            chunk.chunk_index,
+            reason,
+            len(subchunks[0].lines),
+            len(subchunks[1].lines),
+        )
+
+        results = [
+            self._process_chunk_with_retry(client, state, subchunk, estimator)
+            for subchunk in subchunks
+        ]
+        findings = [
+            finding
+            for result in results
+            for finding in result.get("findings", [])
+        ]
+        failed = next(
+            (result for result in results if result.get("status") == "failed"),
+            None,
+        )
+        return {
+            "chunk_index": chunk.chunk_index,
+            "start_line": chunk.start_line,
+            "end_line": chunk.end_line,
+            "status": "failed" if failed else "success",
+            "findings": findings,
+            "prompt_tokens": sum(r.get("prompt_tokens", 0) for r in results),
+            "output_tokens": sum(r.get("output_tokens", 0) for r in results),
+            "duration_seconds": sum(r.get("duration_seconds", 0.0) for r in results),
+            "error": failed.get("error") if failed else None,
+            "split_from_oversized_chunk": True,
+        }

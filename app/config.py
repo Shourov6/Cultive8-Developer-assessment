@@ -31,8 +31,8 @@ MODEL_NUM_THREADS = 2
 # | Total             | ~2048  |                                   |
 # ---------------------------------------------------------------------------
 BUDGET_SYSTEM_PROMPT = 350   # tokens reserved for system prompt
-BUDGET_CARRIED_CONTEXT = 350  # tokens reserved for memory summary
-BUDGET_LOG_CHUNK = 950       # tokens reserved for log lines
+BUDGET_CARRIED_CONTEXT = 300  # tokens reserved for memory summary
+BUDGET_LOG_CHUNK = 900       # tokens reserved for log lines
 BUDGET_MODEL_REPLY = 400     # num_predict cap (max output tokens)
 
 # Conservative characters-per-token estimate (will be calibrated at runtime).
@@ -69,4 +69,3 @@ JOBS_DIR = os.path.join(DATA_DIR, "jobs")
 # Dashboard polling
 # ---------------------------------------------------------------------------
 POLL_INTERVAL_MS = 1500  # frontend polls every 1.5 s
-
